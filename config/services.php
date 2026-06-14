@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    // ── Stripe Checkout — CU19 Pasarela de pago ───────────────────────────
+    'stripe' => [
+        'key'            => env('STRIPE_KEY'),
+        'secret'         => env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        'currency'       => env('STRIPE_CURRENCY', 'usd'),
+        'amount_usd'     => env('STRIPE_AMOUNT_USD', 1450), // 14.50 USD en centavos ≈ 100 Bs
+    ],
+
 ];

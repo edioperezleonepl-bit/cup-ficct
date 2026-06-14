@@ -113,4 +113,17 @@ Route::prefix('api')->group(function () {
     // CU18/CU19: Observaciones y comprobante de postulantes
     Route::post('/postulants/{id}/observations', [PostulantController::class, 'saveObservations']);
     Route::post('/postulants/{id}/upload-receipt', [PostulantController::class, 'uploadReceipt']);
+
+    // ── CU19: Stripe Checkout — Pasarela de pago real ─────────────────────
+    Route::post('/stripe/create-session', [PaymentController::class, 'createStripeSession']);
+    Route::get('/stripe/status/{postulant_id}', [PaymentController::class, 'getPaymentStatus']);
 });
+
+// ── Stripe Webhook (sin CSRF — Stripe no envía token) ─────────────────────
+Route::post('/api/stripe/webhook', [PaymentController::class, 'handleWebhook'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
+
+// ── Páginas de retorno de Stripe (redirigen de vuelta a la SPA) ───────────
+Route::get('/api/stripe/success', [PaymentController::class, 'paymentSuccess']);
+Route::get('/api/stripe/cancel',  [PaymentController::class, 'paymentCancel']);
+

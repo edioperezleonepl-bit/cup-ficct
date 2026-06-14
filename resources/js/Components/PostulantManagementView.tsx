@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { StripePaymentModal } from './StripePaymentModal';
 
 // ============================================================================
 // CASOS DE USO:
 // - [CU-04] Gestionar Postulantes (CRUD: Listar, Buscar, Registrar, Editar, Eliminar)
 // - [CU-06] Gestionar Requisitos del Postulante (Checking de requisitos obligatorios)
+// - [CU-19] Pasarela de pago Stripe Checkout
 // ============================================================================
 
 interface Postulant {
@@ -56,12 +58,14 @@ export const PostulantManagementView: React.FC = () => {
   const [csvErrors, setCsvErrors] = useState<any[]>([]);
   const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(null);
 
-  // Estados para Simulación de Pasarela de Pagos QR
+  // Estados para Pasarela de Pagos Stripe (CU-19)
   const [selectedPostulantForPayment, setSelectedPostulantForPayment] = useState<Postulant | null>(null);
-  const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [txnId, setTxnId] = useState<string | null>(null);
-  const [generatingPayment, setGeneratingPayment] = useState<boolean>(false);
-  const [confirmingPayment, setConfirmingPayment] = useState<boolean>(false);
+  const [stripeInitiated, setStripeInitiated] = useState<boolean>(false);
+  // Banner de retorno de Stripe (success / cancelled)
+  const [paymentBanner, setPaymentBanner] = useState<'success' | 'cancelled' | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get('payment') as 'success' | 'cancelled' | null);
+  });
 
   // Estados para Detalle de Expediente (Observaciones y Comprobante) (CU18/19)
   const [selectedPostulantForDetails, setSelectedPostulantForDetails] = useState<Postulant | null>(null);
@@ -419,6 +423,32 @@ export const PostulantManagementView: React.FC = () => {
         </p>
       </div>
 
+      {/* Banner: Retorno de Stripe ─────────────────────────────────────── */}
+      {paymentBanner === 'success' && (
+        <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl animate-fade-in">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🎉</span>
+            <div>
+              <p className="text-sm font-black text-emerald-400">¡Pago completado exitosamente!</p>
+              <p className="text-[10px] text-slate-400">El postulante ha sido habilitado en el sistema. Recarga la página para ver el estado actualizado.</p>
+            </div>
+          </div>
+          <button onClick={() => { setPaymentBanner(null); fetchPostulants(); }} className="text-emerald-500 hover:text-emerald-400 text-lg font-black">✕</button>
+        </div>
+      )}
+      {paymentBanner === 'cancelled' && (
+        <div className="flex items-center justify-between p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl animate-fade-in">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div>
+              <p className="text-sm font-black text-amber-400">Pago cancelado</p>
+              <p className="text-[10px] text-slate-400">El postulante canceló el proceso de pago en Stripe.</p>
+            </div>
+          </div>
+          <button onClick={() => setPaymentBanner(null)} className="text-amber-500 hover:text-amber-400 text-lg font-black">✕</button>
+        </div>
+      )}
+
       {/* Sección de Carga Masiva (CSV) */}
       <div className="bg-slate-950/40 border border-slate-850 p-5 rounded-2xl space-y-4 shadow-inner">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -591,10 +621,11 @@ export const PostulantManagementView: React.FC = () => {
                           </div>
                         ) : p.reqTituloBachiller ? (
                           <button
-                            onClick={() => handleOpenPaymentModal(p)}
-                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[10px] font-black uppercase transition-all shadow-md border border-indigo-400/20"
+                            onClick={() => setSelectedPostulantForPayment(p)}
+                            className="px-2.5 py-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded text-[10px] font-black uppercase transition-all shadow-md border border-indigo-400/20 flex items-center gap-1"
                           >
-                            Pagar QR
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.208c0 4.114 2.494 5.53 6.5 6.977 2.613.958 3.482 1.686 3.482 2.72 0 1.012-.912 1.594-2.477 1.594-2.405 0-5.056-.958-7.073-2.24l-.982 5.54C5.033 23.14 7.972 24 11.3 24c2.67 0 4.897-.621 6.467-1.804 1.634-1.24 2.502-3.054 2.502-5.217 0-4.22-2.548-5.702-6.293-7.049V9.15z"/></svg>
+                            Stripe
                           </button>
                         ) : (
                           <span className="px-2 py-1 bg-slate-800 text-slate-400 border border-slate-750 rounded text-[10px] font-semibold uppercase cursor-not-allowed inline-block" title="Debe cumplir los requisitos físicos antes de pagar">
@@ -1001,8 +1032,21 @@ export const PostulantManagementView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal de Pago Stripe — CU19 */}
+      {selectedPostulantForPayment && (
+        <StripePaymentModal
+          postulant={selectedPostulantForPayment}
+          onClose={() => setSelectedPostulantForPayment(null)}
+          onPaymentInitiated={() => {
+            setStripeInitiated(true);
+            setSelectedPostulantForPayment(null);
+          }}
+        />
+      )}
     </div>
   );
 };
 
 export default PostulantManagementView;
+
