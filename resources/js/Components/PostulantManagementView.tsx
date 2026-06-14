@@ -60,12 +60,26 @@ export const PostulantManagementView: React.FC = () => {
 
   // Estados para Pasarela de Pagos Stripe (CU-19)
   const [selectedPostulantForPayment, setSelectedPostulantForPayment] = useState<Postulant | null>(null);
-  const [stripeInitiated, setStripeInitiated] = useState<boolean>(false);
-  // Banner de retorno de Stripe (success / cancelled)
-  const [paymentBanner, setPaymentBanner] = useState<'success' | 'cancelled' | null>(() => {
-    const params = new URLSearchParams(window.location.search);
-    return (params.get('payment') as 'success' | 'cancelled' | null);
-  });
+  // Banner de retorno de Stripe (success / cancelled) — se lee con useEffect para evitar crash en SSR
+  const [paymentBanner, setPaymentBanner] = useState<'success' | 'cancelled' | null>(null);
+
+  // Leer param ?payment=success|cancelled al montar el componente
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const payment = params.get('payment');
+      if (payment === 'success' || payment === 'cancelled') {
+        setPaymentBanner(payment as 'success' | 'cancelled');
+        // Limpiar el param de la URL sin recargar
+        const url = new URL(window.location.href);
+        url.searchParams.delete('payment');
+        url.searchParams.delete('postulant');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch (e) {
+      // ignorar si window no disponible
+    }
+  }, []);
 
   // Estados para Detalle de Expediente (Observaciones y Comprobante) (CU18/19)
   const [selectedPostulantForDetails, setSelectedPostulantForDetails] = useState<Postulant | null>(null);
@@ -1038,10 +1052,7 @@ export const PostulantManagementView: React.FC = () => {
         <StripePaymentModal
           postulant={selectedPostulantForPayment}
           onClose={() => setSelectedPostulantForPayment(null)}
-          onPaymentInitiated={() => {
-            setStripeInitiated(true);
-            setSelectedPostulantForPayment(null);
-          }}
+          onPaymentInitiated={() => setSelectedPostulantForPayment(null)}
         />
       )}
     </div>
