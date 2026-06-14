@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // ============================================================================
-// CASO DE USO: [CU-03] Gestionar Usuarios, Roles y Permisos
+// CASO DE USO: [CU-03] Gestionar Usuarios, Roles y Permisos (Dinámico)
 // ============================================================================
 
 interface SystemUser {
@@ -13,38 +13,68 @@ interface SystemUser {
 }
 
 export const UserManagementView: React.FC = () => {
-  // Lista inicial sembrada de usuarios
-  const [users, setUsers] = useState<SystemUser[]>([
-    { id: 1, name: 'Administrador General', email: 'admin@ficct.uagrm.edu.bo', role: 'admin', permissions: ['Acceso Total', 'Modificar Notas', 'Redirección Cupos'] },
-    { id: 2, name: 'Docente Auxiliar', email: 'docente@ficct.uagrm.edu.bo', role: 'docente', permissions: ['Ver Carga Horaria', 'Registrar Asistencia'] },
-    { id: 3, name: 'Rene Copa (Alumno)', email: 'alumno@ficct.uagrm.edu.bo', role: 'alumno', permissions: ['Ver Notas Propias', 'Ver Estado Admisión'] },
-    { id: 4, name: 'Decano FICCT', email: 'autoridad@ficct.uagrm.edu.bo', role: 'autoridades', permissions: ['Ver Reportes CUP', 'Ver Dashboard'] },
-    { id: 5, name: 'Coordinador CUP', email: 'coordinador@ficct.uagrm.edu.bo', role: 'coordinador', permissions: ['Registrar Postulante', 'Cargar Notas'] },
-  ]);
-
+  const [users, setUsers]       = useState<SystemUser[]>([]);
+  const [loading, setLoading]   = useState<boolean>(true);
   const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
-  const [newRole, setNewRole] = useState<'admin' | 'docente' | 'alumno' | 'autoridades' | 'coordinador'>('docente');
+  const [newRole, setNewRole]   = useState<'admin' | 'docente' | 'alumno' | 'autoridades' | 'coordinador'>('docente');
+  const [saving, setSaving]     = useState<boolean>(false);
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/users');
+      const data = await response.json();
+      if (data.success) {
+        setUsers(data.users);
+      }
+    } catch (err) {
+      console.error('Error al cargar usuarios:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Función para cambiar de rol [CU-03.1]
-  const handleRoleChange = (userId: number) => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
-          // Asignar permisos dinámicos según el nuevo rol
-          let perms: string[] = [];
-          if (newRole === 'admin') perms = ['Acceso Total', 'Modificar Notas', 'Redirección Cupos'];
-          else if (newRole === 'docente') perms = ['Ver Carga Horaria', 'Registrar Asistencia'];
-          else if (newRole === 'alumno') perms = ['Ver Notas Propias', 'Ver Estado Admisión'];
-          else if (newRole === 'autoridades') perms = ['Ver Reportes CUP', 'Ver Dashboard'];
-          else if (newRole === 'coordinador') perms = ['Registrar Postulante', 'Cargar Notas'];
+  const handleRoleChange = async (userId: number) => {
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/users/${userId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+        },
+        body: JSON.stringify({ role: newRole }),
+      });
 
-          return { ...u, role: newRole, permissions: perms };
-        }
-        return u;
-      })
-    );
-    setSelectedUser(null);
-    alert('Rol y permisos actualizados exitosamente.');
+      const result = await response.json();
+      if (response.ok && result.success) {
+        // Asignar permisos estáticos simulados según el rol localmente para actualizar vista
+        let perms: string[] = [];
+        if (newRole === 'admin') perms = ['Acceso Total', 'Modificar Notas', 'Redirección Cupos'];
+        else if (newRole === 'docente') perms = ['Ver Carga Horaria', 'Registrar Asistencia', 'Registrar Notas'];
+        else if (newRole === 'alumno') perms = ['Ver Notas Propias', 'Ver Estado Admisión'];
+        else if (newRole === 'autoridades') perms = ['Ver Reportes CUP', 'Ver Dashboard'];
+        else if (newRole === 'coordinador') perms = ['Registrar Postulante', 'Cargar Notas'];
+
+        setUsers((prev) =>
+          prev.map((u) => u.id === userId ? { ...u, role: newRole, permissions: perms } : u)
+        );
+        setSelectedUser(null);
+        alert('Rol y permisos actualizados en la base de datos exitosamente.');
+      } else {
+        alert(result.message || 'Error al actualizar el rol.');
+      }
+    } catch (err) {
+      alert('Error de red al cambiar el rol.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -53,7 +83,7 @@ export const UserManagementView: React.FC = () => {
       {/* Cabecera del Caso de Uso */}
       <div className="border-b border-slate-800 pb-4">
         <span className="px-3 py-1 bg-indigo-500/10 text-indigo-400 text-xs font-bold uppercase tracking-widest rounded-full border border-indigo-500/20">
-          Caso de Uso: [CU-03] Gestionar Usuarios, Roles y Permisos
+          Caso de Uso: [CU-03] Gestionar Usuarios, Roles y Permisos (Real)
         </span>
         <h2 className="text-2xl font-black text-white mt-2">Administración de Roles y Permisos</h2>
         <p className="text-xs text-slate-400 mt-1">
@@ -78,34 +108,48 @@ export const UserManagementView: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} className="border-b border-slate-900/60 hover:bg-slate-900/10">
-                    <td className="p-4 font-bold text-slate-300">{u.name}</td>
-                    <td className="p-4 font-mono">{u.email}</td>
-                    <td className="p-4">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                        u.role === 'admin' 
-                          ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                          : u.role === 'docente'
-                          ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
-                          : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                      }`}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <button
-                        onClick={() => {
-                          setSelectedUser(u);
-                          setNewRole(u.role);
-                        }}
-                        className="px-3 py-1.5 bg-indigo-600/15 hover:bg-indigo-600/30 text-indigo-400 text-[10px] font-black uppercase rounded-lg border border-indigo-500/20 transition-all"
-                      >
-                        Editar Rol
-                      </button>
+                {loading ? (
+                  <tr>
+                    <td colSpan={4} className="p-12 text-center text-slate-500 font-bold uppercase tracking-wider animate-pulse">
+                      Cargando usuarios...
                     </td>
                   </tr>
-                ))}
+                ) : users.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="p-12 text-center text-rose-400 font-bold">
+                      No hay usuarios registrados.
+                    </td>
+                  </tr>
+                ) : (
+                  users.map((u) => (
+                    <tr key={u.id} className="border-b border-slate-900/60 hover:bg-slate-900/10">
+                      <td className="p-4 font-bold text-slate-300">{u.name}</td>
+                      <td className="p-4 font-mono">{u.email}</td>
+                      <td className="p-4">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
+                          u.role === 'admin' 
+                            ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                            : u.role === 'docente'
+                            ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
+                            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        }`}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <button
+                          onClick={() => {
+                            setSelectedUser(u);
+                            setNewRole(u.role);
+                          }}
+                          className="px-3 py-1.5 bg-indigo-600/15 hover:bg-indigo-600/30 text-indigo-400 text-[10px] font-black uppercase rounded-lg border border-indigo-500/20 transition-all"
+                        >
+                          Editar Rol
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -152,15 +196,17 @@ export const UserManagementView: React.FC = () => {
               <div className="flex items-center gap-3 pt-2">
                 <button
                   onClick={() => setSelectedUser(null)}
+                  disabled={saving}
                   className="flex-1 bg-transparent hover:bg-slate-800 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-xl transition-all"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={() => handleRoleChange(selectedUser.id)}
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2 rounded-xl transition-all border border-indigo-400/20"
+                  disabled={saving}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-850 text-white text-xs font-bold py-2 rounded-xl transition-all border border-indigo-400/20"
                 >
-                  Guardar Rol
+                  {saving ? 'Guardando...' : 'Guardar Rol'}
                 </button>
               </div>
             </div>

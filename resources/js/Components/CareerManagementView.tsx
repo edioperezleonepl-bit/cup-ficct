@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // ============================================================================
 // CASO DE USO: [CU-07] Gestionar Carreras y Cupos
@@ -12,29 +12,65 @@ interface Career {
 }
 
 export const CareerManagementView: React.FC = () => {
-  // Lista inicial de carreras
-  const [careers, setCareers] = useState<Career[]>([
-    { id: 1, name: 'Ingeniería Informática', capacity: 2, admittedCount: 2 },
-    { id: 2, name: 'Ingeniería de Sistemas', capacity: 2, admittedCount: 1 },
-    { id: 3, name: 'Ingeniería en Redes y Telecomunicaciones', capacity: 2, admittedCount: 0 },
-    { id: 4, name: 'Ingeniería en Diseño y Animación Digital', capacity: 2, admittedCount: 0 },
-  ]);
-
+  const [careers, setCareers] = useState<Career[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [selectedCareer, setSelectedCareer] = useState<Career | null>(null);
   const [newCapacity, setNewCapacity] = useState<number>(0);
 
+  // Cargar carreras de la base de datos al montar el componente
+  useEffect(() => {
+    fetchCareers();
+  }, []);
+
+  const fetchCareers = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/careers');
+      if (response.ok) {
+        const data = await response.json();
+        setCareers(data);
+      } else {
+        console.error('Error al cargar carreras');
+      }
+    } catch (err) {
+      console.error('Error de red al cargar carreras', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Modificar la capacidad (cupos) de la carrera [CU-07.1]
-  const handleUpdateCapacity = (careerId: number) => {
+  const handleUpdateCapacity = async (careerId: number) => {
     if (newCapacity < 0) {
       alert('La capacidad no puede ser negativa.');
       return;
     }
 
-    setCareers(prev => 
-      prev.map(c => c.id === careerId ? { ...c, capacity: newCapacity } : c)
-    );
-    setSelectedCareer(null);
-    alert('Capacidad de cupos actualizada exitosamente.');
+    try {
+      const response = await fetch(`/api/careers/${careerId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+        },
+        body: JSON.stringify({ capacity: newCapacity }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setCareers(prev => 
+          prev.map(c => c.id === careerId ? { ...c, capacity: newCapacity } : c)
+        );
+        setSelectedCareer(null);
+        alert('Capacidad de cupos actualizada exitosamente en la base de datos.');
+      } else {
+        alert(result.message || 'Error al actualizar la capacidad de cupos.');
+      }
+    } catch (err) {
+      alert('Error de red al intentar actualizar la capacidad de cupos.');
+    }
   };
 
   return (
@@ -69,34 +105,48 @@ export const CareerManagementView: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {careers.map((c) => {
-                  const available = c.capacity - c.admittedCount;
-                  const isFull = available <= 0;
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="p-12 text-center text-slate-500 font-bold uppercase tracking-wider">
+                      Cargando aforo de vacantes...
+                    </td>
+                  </tr>
+                ) : careers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-12 text-center text-rose-400 font-bold uppercase tracking-wider">
+                      No se encontraron carreras registradas.
+                    </td>
+                  </tr>
+                ) : (
+                  careers.map((c) => {
+                    const available = c.capacity - c.admittedCount;
+                    const isFull = available <= 0;
 
-                  return (
-                    <tr key={c.id} className="border-b border-slate-900/60 hover:bg-slate-900/10">
-                      <td className="p-4 font-bold text-slate-300">{c.name}</td>
-                      <td className="p-4 text-center font-bold text-slate-300">{c.capacity}</td>
-                      <td className="p-4 text-center text-indigo-400 font-semibold">{c.admittedCount}</td>
-                      <td className="p-4 text-center font-black">
-                        <span className={isFull ? 'text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20' : 'text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20'}>
-                          {isFull ? 'LLENO' : `${available} libres`}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        <button
-                          onClick={() => {
-                            setSelectedCareer(c);
-                            setNewCapacity(c.capacity);
-                          }}
-                          className="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/30 text-amber-400 text-[10px] font-black uppercase rounded-lg border border-amber-500/20 transition-all"
-                        >
-                          Modificar Cupos
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                    return (
+                      <tr key={c.id} className="border-b border-slate-900/60 hover:bg-slate-900/10">
+                        <td className="p-4 font-bold text-slate-300">{c.name}</td>
+                        <td className="p-4 text-center font-bold text-slate-300">{c.capacity}</td>
+                        <td className="p-4 text-center text-indigo-400 font-semibold">{c.admittedCount}</td>
+                        <td className="p-4 text-center font-black">
+                          <span className={isFull ? 'text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20' : 'text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20'}>
+                            {isFull ? 'LLENO' : `${available} libres`}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          <button
+                            onClick={() => {
+                              setSelectedCareer(c);
+                              setNewCapacity(c.capacity);
+                            }}
+                            className="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/30 text-amber-400 text-[10px] font-black uppercase rounded-lg border border-amber-500/20 transition-all"
+                          >
+                            Modificar Cupos
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>

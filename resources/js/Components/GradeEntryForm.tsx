@@ -157,12 +157,14 @@ export const GradeEntryForm: React.FC<GradeEntryFormProps> = ({ postulant, onSuc
     SUBJECT_LIST.forEach((subj) => {
       const row = grades[subj];
       const numbers = row.filter((g): g is number => g !== '');
-      
+
       if (numbers.length === 3) {
+        // Solo se calcula el promedio cuando los 3 exámenes están completos
         const average = numbers.reduce((sum, n) => sum + n, 0) / 3;
         avgs[subj] = { average, isComplete: true };
       } else {
-        avgs[subj] = { average: numbers.length > 0 ? (numbers.reduce((sum, n) => sum + n, 0) / numbers.length) : null, isComplete: false };
+        // Con menos de 3 notas no se muestra ningún promedio (null = --.--) 
+        avgs[subj] = { average: null, isComplete: false };
       }
     });
 

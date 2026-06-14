@@ -1,11 +1,22 @@
 <?php
 
-namespace App\Models;
+namespace App\Modules\P2_GestionPostulantes\Models;
 
+use App\Modules\P4_CarrerasYGrupos\Models\Career;
+use App\Modules\P4_CarrerasYGrupos\Models\Group;
+use App\Modules\P5_ExamenesYCalificaciones\Models\Exam;
+use App\Modules\P5_ExamenesYCalificaciones\Models\SubjectAverage;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * Modelo de Postulante al Curso Pre-universitario de la FICCT.
+ * Módulo: P2_GestionPostulantes
+ *
+ * Centraliza todos los datos personales, de requisitos, pago,
+ * carrera, grupo y estado de admisión del aspirante.
+ */
 class Postulant extends Model
 {
     protected $fillable = [
@@ -33,11 +44,13 @@ class Postulant extends Model
     protected $casts = [
         'fecha_nacimiento' => 'date',
         'titulo_bachiller' => 'boolean',
-        'pago_realizado' => 'boolean',
+        'pago_realizado'   => 'boolean',
     ];
 
+    // ─── Relaciones con Carreras (M4) ────────────────────────────────────────
+
     /**
-     * Relación con la primera opción de carrera.
+     * Relación con la primera opción de carrera elegida por el postulante.
      */
     public function carreraOpcion1(): BelongsTo
     {
@@ -45,7 +58,7 @@ class Postulant extends Model
     }
 
     /**
-     * Relación con la segunda opción de carrera.
+     * Relación con la segunda opción de carrera elegida por el postulante.
      */
     public function carreraOpcion2(): BelongsTo
     {
@@ -60,16 +73,20 @@ class Postulant extends Model
         return $this->belongsTo(Career::class, 'carrera_admitida_id');
     }
 
+    // ─── Relación con Grupo (M4) ──────────────────────────────────────────────
+
     /**
-     * Relación con el grupo asignado.
+     * Relación con el grupo de clase asignado al postulante.
      */
     public function grupo(): BelongsTo
     {
         return $this->belongsTo(Group::class, 'grupo_id');
     }
 
+    // ─── Relaciones con Exámenes y Promedios (M5) ────────────────────────────
+
     /**
-     * Relación con los exámenes individuales de las materias.
+     * Relación con los exámenes individuales registrados por materia.
      */
     public function exams(): HasMany
     {

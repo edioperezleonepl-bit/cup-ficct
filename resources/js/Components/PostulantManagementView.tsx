@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 
 // ============================================================================
 // CASOS DE USO:
@@ -18,36 +18,18 @@ interface Postulant {
   reqTituloBachiller: boolean;
   reqCertificadoNacimiento: boolean;
   reqCiFisico: boolean;
+  // Pago
+  pagoRealizado: boolean;
+  transaccionPagoId: string | null;
+  montoPagado: number;
+  observacionesRequisitos?: string | null;
+  comprobantePago?: string | null;
 }
 
 export const PostulantManagementView: React.FC = () => {
-  // Lista inicial de postulantes sembrada [CU-04.1] Listar
-  const [postulants, setPostulants] = useState<Postulant[]>([
-    {
-      id: 1,
-      ci: '1234567',
-      nombres: 'Rene',
-      apellidos: 'Copa Justiniano',
-      correo: 'alumno@ficct.uagrm.edu.bo',
-      carreraOpcion1: 'Ingeniería Informática',
-      carreraOpcion2: 'Ingeniería de Sistemas',
-      reqTituloBachiller: true,
-      reqCertificadoNacimiento: true,
-      reqCiFisico: true,
-    },
-    {
-      id: 2,
-      ci: '8765432',
-      nombres: 'Sebastian',
-      apellidos: 'Arteaga Melgar',
-      correo: 'seb@gmail.com',
-      carreraOpcion1: 'Ingeniería Informática',
-      carreraOpcion2: 'Ingeniería de Sistemas',
-      reqTituloBachiller: false,
-      reqCertificadoNacimiento: true,
-      reqCiFisico: false,
-    }
-  ]);
+  // Lista de postulantes obtenida del backend
+  const [postulants, setPostulants] = useState<Postulant[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
   // Estados del Formulario (Crear/Editar) [CU-04.2] Registrar / [CU-04.3] Editar
   const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -68,6 +50,227 @@ export const PostulantManagementView: React.FC = () => {
   // Búsqueda [CU-04.4] Buscar
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Estados para Carga Masiva (CSV)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [csvErrors, setCsvErrors] = useState<any[]>([]);
+  const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(null);
+
+  // Estados para Simulación de Pasarela de Pagos QR
+  const [selectedPostulantForPayment, setSelectedPostulantForPayment] = useState<Postulant | null>(null);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [txnId, setTxnId] = useState<string | null>(null);
+  const [generatingPayment, setGeneratingPayment] = useState<boolean>(false);
+  const [confirmingPayment, setConfirmingPayment] = useState<boolean>(false);
+
+  // Estados para Detalle de Expediente (Observaciones y Comprobante) (CU18/19)
+  const [selectedPostulantForDetails, setSelectedPostulantForDetails] = useState<Postulant | null>(null);
+  const [observations, setObservations] = useState<string>('');
+  const [savingObs, setSavingObs] = useState<boolean>(false);
+  const [uploadingReceipt, setUploadingReceipt] = useState<boolean>(false);
+  const fileReceiptRef = useRef<HTMLInputElement>(null);
+
+  const handleSaveObservations = async () => {
+    if (!selectedPostulantForDetails) return;
+    setSavingObs(true);
+    try {
+      const response = await fetch(`/api/postulants/${selectedPostulantForDetails.id}/observations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+        },
+        body: JSON.stringify({ observaciones: observations })
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        alert('Observaciones guardadas con éxito.');
+        setPostulants(prev => 
+          prev.map(p => p.id === selectedPostulantForDetails.id ? { ...p, observacionesRequisitos: observations } : p)
+        );
+        setSelectedPostulantForDetails(prev => prev ? { ...prev, observacionesRequisitos: observations } : null);
+      } else {
+        alert(result.message || 'Error al guardar observaciones.');
+      }
+    } catch (err) {
+      alert('Error de red al guardar observaciones.');
+    } finally {
+      setSavingObs(false);
+    }
+  };
+
+  const handleUploadReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!selectedPostulantForDetails || !e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('receipt', file);
+
+    setUploadingReceipt(true);
+    try {
+      const response = await fetch(`/api/postulants/${selectedPostulantForDetails.id}/upload-receipt`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+        },
+        body: formData
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        alert('Comprobante de pago subido con éxito.');
+        setPostulants(prev => 
+          prev.map(p => p.id === selectedPostulantForDetails.id ? { ...p, comprobantePago: result.path } : p)
+        );
+        setSelectedPostulantForDetails(prev => prev ? { ...prev, comprobantePago: result.path } : null);
+      } else {
+        alert(result.message || 'Error al subir comprobante.');
+      }
+    } catch (err) {
+      alert('Error de red al intentar subir el comprobante.');
+    } finally {
+      setUploadingReceipt(false);
+      if (fileReceiptRef.current) {
+        fileReceiptRef.current.value = '';
+      }
+    }
+  };
+
+  const handleOpenPaymentModal = async (p: Postulant) => {
+    setSelectedPostulantForPayment(p);
+    setQrUrl(null);
+    setTxnId(null);
+    setGeneratingPayment(true);
+    
+    try {
+      const response = await fetch('/api/postulants/pay/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+        },
+        body: JSON.stringify({ postulant_id: p.id })
+      });
+      
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setQrUrl(result.qr_url);
+        setTxnId(result.transaction_id);
+      } else {
+        alert(result.message || 'Error al generar código QR de pago.');
+        setSelectedPostulantForPayment(null);
+      }
+    } catch (err) {
+      alert('Error de red al intentar conectar con la pasarela de pagos.');
+      setSelectedPostulantForPayment(null);
+    } finally {
+      setGeneratingPayment(false);
+    }
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!selectedPostulantForPayment || !txnId) return;
+    
+    setConfirmingPayment(true);
+    try {
+      const response = await fetch('/api/postulants/pay/confirm', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+        },
+        body: JSON.stringify({
+          postulant_id: selectedPostulantForPayment.id,
+          transaction_id: txnId,
+          amount: 100.00
+        })
+      });
+      
+      const result = await response.json();
+      if (response.ok && result.success) {
+        alert('Pago simulado con éxito. Postulante habilitado en el sistema.');
+        setPostulants(prev => 
+          prev.map(p => p.id === selectedPostulantForPayment.id ? result.postulant : p)
+        );
+        setSelectedPostulantForPayment(null);
+      } else {
+        alert(result.message || 'Error al confirmar pago.');
+      }
+    } catch (err) {
+      alert('Error de red al confirmar pago.');
+    } finally {
+      setConfirmingPayment(false);
+    }
+  };
+
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    const file = files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    setUploading(true);
+    setCsvErrors([]);
+    setImportSuccessMessage(null);
+    
+    try {
+      const response = await fetch('/api/postulants/import-csv', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+        },
+        body: formData
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        setImportSuccessMessage(result.message);
+        fetchPostulants();
+      } else {
+        if (response.status === 422 && result.errors) {
+          setCsvErrors(result.errors);
+        } else {
+          alert(result.message || 'Error al importar archivo CSV.');
+        }
+      }
+    } catch (err) {
+      alert('Error de red al intentar subir el archivo CSV.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Cargar postulantes de la base de datos al montar el componente
+  useEffect(() => {
+    fetchPostulants();
+  }, []);
+
+  const fetchPostulants = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/postulants');
+      if (response.ok) {
+        const data = await response.json();
+        setPostulants(data);
+      } else {
+        console.error('Error al cargar postulantes');
+      }
+    } catch (err) {
+      console.error('Error de red al cargar postulantes', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Filtrar postulantes en base a búsqueda reactiva [CU-04.4]
   const filteredPostulants = useMemo(() => {
     return postulants.filter(p => 
@@ -78,49 +281,74 @@ export const PostulantManagementView: React.FC = () => {
   }, [postulants, searchTerm]);
 
   // Guardar postulante (Crear o Modificar) [CU-04.2] / [CU-04.3]
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ci || !nombres || !apellidos || !correo) {
       alert('Por favor, rellena todos los campos obligatorios.');
       return;
     }
 
+    const postulantData = {
+      ci,
+      nombres,
+      apellidos,
+      correo,
+      carreraOpcion1,
+      carreraOpcion2,
+      reqTituloBachiller: reqTitulo,
+    };
+
     if (isEditing && currentId !== null) {
       // Modificar postulante [CU-04.3]
-      setPostulants(prev => 
-        prev.map(p => p.id === currentId ? {
-          ...p,
-          ci,
-          nombres,
-          apellidos,
-          correo,
-          carreraOpcion1,
-          carreraOpcion2,
-          reqTituloBachiller: reqTitulo,
-          reqCertificadoNacimiento: reqCertificado,
-          reqCiFisico: reqCiFisico
-        } : p)
-      );
-      alert('Postulante y requisitos modificados correctamente.');
+      try {
+        const response = await fetch(`/api/postulants/${currentId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+          },
+          body: JSON.stringify(postulantData),
+        });
+
+        const result = await response.json();
+        if (response.ok && result.success) {
+          setPostulants(prev => 
+            prev.map(p => p.id === currentId ? result.postulant : p)
+          );
+          alert('Postulante y requisitos modificados correctamente.');
+          resetForm();
+        } else {
+          alert(result.message || 'Error al modificar postulante.');
+        }
+      } catch (err) {
+        alert('Error de red al intentar modificar postulante.');
+      }
     } else {
       // Registrar postulante [CU-04.2]
-      const newPostulant: Postulant = {
-        id: Date.now(),
-        ci,
-        nombres,
-        apellidos,
-        correo,
-        carreraOpcion1,
-        carreraOpcion2,
-        reqTituloBachiller: reqTitulo,
-        reqCertificadoNacimiento: reqCertificado,
-        reqCiFisico: reqCiFisico
-      };
-      setPostulants(prev => [...prev, newPostulant]);
-      alert('Postulante registrado correctamente.');
-    }
+      try {
+        const response = await fetch('/api/postulants', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+          },
+          body: JSON.stringify(postulantData),
+        });
 
-    resetForm();
+        const result = await response.json();
+        if (response.ok && result.success) {
+          setPostulants(prev => [...prev, result.postulant]);
+          alert('Postulante registrado correctamente.');
+          resetForm();
+        } else {
+          alert(result.message || 'Error al registrar postulante.');
+        }
+      } catch (err) {
+        alert('Error de red al intentar registrar postulante.');
+      }
+    }
   };
 
   // Cargar datos en el formulario para editar [CU-04.3]
@@ -139,9 +367,27 @@ export const PostulantManagementView: React.FC = () => {
   };
 
   // Eliminar postulante [CU-04.5] Eliminar
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
     if (confirm('¿Está seguro de que desea eliminar permanentemente a este postulante?')) {
-      setPostulants(prev => prev.filter(p => p.id !== id));
+      try {
+        const response = await fetch(`/api/postulants/${id}`, {
+          method: 'DELETE',
+          headers: {
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+          },
+        });
+
+        const result = await response.json();
+        if (response.ok && result.success) {
+          setPostulants(prev => prev.filter(p => p.id !== id));
+          alert('Postulante eliminado correctamente.');
+        } else {
+          alert(result.message || 'Error al eliminar postulante.');
+        }
+      } catch (err) {
+        alert('Error de red al intentar eliminar postulante.');
+      }
     }
   };
 
@@ -173,12 +419,102 @@ export const PostulantManagementView: React.FC = () => {
         </p>
       </div>
 
+      {/* Sección de Carga Masiva (CSV) */}
+      <div className="bg-slate-950/40 border border-slate-850 p-5 rounded-2xl space-y-4 shadow-inner">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              📥 Carga Masiva de Postulantes
+            </h3>
+            <p className="text-xxs text-slate-400">
+              Sube un archivo CSV con las columnas: <code className="text-indigo-400 bg-slate-900 px-1 py-0.5 rounded font-mono">ci, nombres, apellidos, correo, carreraOpcion1, carreraOpcion2, [titulo_bachiller]</code>.
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <input 
+              type="file" 
+              ref={fileInputRef}
+              onChange={handleCsvUpload}
+              accept=".csv"
+              className="hidden" 
+            />
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all border border-indigo-400/20 flex items-center gap-2 shadow-lg"
+            >
+              {uploading ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Procesando...
+                </>
+              ) : (
+                <>
+                  <span>📄</span> Subir Archivo CSV
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Mensaje de Éxito */}
+        {importSuccessMessage && (
+          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs font-bold flex items-center justify-between animate-fade-in">
+            <span>🎉 {importSuccessMessage}</span>
+            <button onClick={() => setImportSuccessMessage(null)} className="text-emerald-500 hover:text-emerald-400">✕</button>
+          </div>
+        )}
+
+        {/* Listado de Errores de Validación */}
+        {csvErrors.length > 0 && (
+          <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl space-y-3 animate-fade-in">
+            <div className="flex items-center justify-between border-b border-rose-500/20 pb-2">
+              <span className="text-rose-400 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                ⚠️ Errores de Validación Encontrados ({csvErrors.length})
+              </span>
+              <button 
+                onClick={() => setCsvErrors([])} 
+                className="text-rose-400 hover:text-rose-300 text-xs font-bold"
+              >
+                Limpiar Errores
+              </button>
+            </div>
+            
+            <div className="max-h-60 overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-rose-500/20 scrollbar-track-transparent">
+              {csvErrors.map((err, idx) => (
+                <div key={idx} className="bg-slate-950/60 p-3 rounded-lg border border-slate-900 flex flex-col md:flex-row md:items-start justify-between gap-2 text-[11px]">
+                  <div className="space-y-0.5">
+                    <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded font-black mr-2 text-[9px]">
+                      Fila {err.row}
+                    </span>
+                    <span className="text-slate-300 font-semibold mr-2">CI: {err.ci}</span>
+                    <span className="text-slate-400">({err.postulant})</span>
+                  </div>
+                  <ul className="text-rose-400/95 list-disc list-inside md:text-right space-y-0.5">
+                    {err.errors.map((msg: string, eIdx: number) => (
+                      <li key={eIdx} className="inline-block md:block md:after:content-none after:content-[',_'] last:after:content-none">{msg}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Listado y Búsqueda [CU-04.1] / [CU-04.4] */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Postulantes Registrados</h3>
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              Postulantes Registrados
+              <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-black rounded-full">
+                {filteredPostulants.length}
+              </span>
+            </h3>
             
             {/* Buscador reactivo [CU-04.4] */}
             <input
@@ -194,55 +530,106 @@ export const PostulantManagementView: React.FC = () => {
             <table className="w-full text-left text-xs text-slate-400 border-collapse">
               <thead>
                 <tr className="border-b border-slate-800 text-slate-500 font-bold">
+                  <th className="p-4 w-12 text-center">N°</th>
                   <th className="p-4">Postulante (CI)</th>
                   <th className="p-4">Opciones de Carrera</th>
                   <th className="p-4">Requisitos Entregados</th>
+                  <th className="p-4 text-center">Pago (CUP)</th>
                   <th className="p-4">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredPostulants.map((p) => (
-                  <tr key={p.id} className="border-b border-slate-900/60 hover:bg-slate-900/10">
-                    <td className="p-4">
-                      <p className="font-bold text-slate-300">{p.apellidos}, {p.nombres}</p>
-                      <span className="text-[10px] text-slate-500">CI: {p.ci} | {p.correo}</span>
-                    </td>
-                    <td className="p-4">
-                      <p className="text-[10px] text-slate-400"><strong>1ra:</strong> {p.carreraOpcion1}</p>
-                      <p className="text-[10px] text-slate-400"><strong>2da:</strong> {p.carreraOpcion2}</p>
-                    </td>
-                    <td className="p-4">
-                      {/* Checkboxes de Requisitos [CU-06] */}
-                      <div className="flex flex-col gap-1 text-[9px] font-semibold">
-                        <span className={p.reqTituloBachiller ? 'text-emerald-400' : 'text-rose-400'}>
-                          {p.reqTituloBachiller ? '✓' : '✗'} Título Bachiller
-                        </span>
-                        <span className={p.reqCertificadoNacimiento ? 'text-emerald-400' : 'text-rose-400'}>
-                          {p.reqCertificadoNacimiento ? '✓' : '✗'} Cert. Nacimiento
-                        </span>
-                        <span className={p.reqCiFisico ? 'text-emerald-400' : 'text-rose-400'}>
-                          {p.reqCiFisico ? '✓' : '✗'} Cédula Física
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => startEdit(p)}
-                          className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded transition-all border border-emerald-500/20"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleDelete(p.id)}
-                          className="px-2 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded transition-all border border-rose-500/20"
-                        >
-                          Eliminar
-                        </button>
-                      </div>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="p-12 text-center text-slate-500 font-bold uppercase tracking-wider">
+                      Cargando expedientes de postulantes...
                     </td>
                   </tr>
-                ))}
+                ) : filteredPostulants.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-12 text-center text-slate-500">
+                      No se encontraron postulantes registrados.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredPostulants.map((p, idx) => (
+                    <tr key={p.id} className="border-b border-slate-900/60 hover:bg-slate-900/10">
+                      <td className="p-4 text-center font-bold text-slate-500">
+                        {idx + 1}
+                      </td>
+                      <td className="p-4">
+                        <p className="font-bold text-slate-300">{p.apellidos}, {p.nombres}</p>
+                        <span className="text-[10px] text-slate-500">CI: {p.ci} | {p.correo}</span>
+                      </td>
+                      <td className="p-4">
+                        <p className="text-[10px] text-slate-400"><strong>1ra:</strong> {p.carreraOpcion1}</p>
+                        <p className="text-[10px] text-slate-400"><strong>2da:</strong> {p.carreraOpcion2}</p>
+                      </td>
+                      <td className="p-4">
+                        {/* Checkboxes de Requisitos [CU-06] */}
+                        <div className="flex flex-col gap-1 text-[9px] font-semibold">
+                          <span className={p.reqTituloBachiller ? 'text-emerald-400' : 'text-rose-400'}>
+                            {p.reqTituloBachiller ? '✓' : '✗'} Título Bachiller
+                          </span>
+                          <span className={p.reqCertificadoNacimiento ? 'text-emerald-400' : 'text-rose-400'}>
+                            {p.reqCertificadoNacimiento ? '✓' : '✗'} Cert. Nacimiento
+                          </span>
+                          <span className={p.reqCiFisico ? 'text-emerald-400' : 'text-rose-400'}>
+                            {p.reqCiFisico ? '✓' : '✗'} Cédula Física
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-4 text-center">
+                        {p.pagoRealizado ? (
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-black uppercase">
+                              ✓ PAGADO
+                            </span>
+                            <span className="text-[8px] text-slate-500 font-mono truncate max-w-[100px]" title={p.transaccionPagoId || ''}>
+                              {p.transaccionPagoId}
+                            </span>
+                          </div>
+                        ) : p.reqTituloBachiller ? (
+                          <button
+                            onClick={() => handleOpenPaymentModal(p)}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[10px] font-black uppercase transition-all shadow-md border border-indigo-400/20"
+                          >
+                            Pagar QR
+                          </button>
+                        ) : (
+                          <span className="px-2 py-1 bg-slate-800 text-slate-400 border border-slate-750 rounded text-[10px] font-semibold uppercase cursor-not-allowed inline-block" title="Debe cumplir los requisitos físicos antes de pagar">
+                            Bloqueado 🔒
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedPostulantForDetails(p);
+                              setObservations(p.observacionesRequisitos || '');
+                            }}
+                            className="px-2 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded transition-all border border-indigo-500/20"
+                          >
+                            Expediente
+                          </button>
+                          <button
+                            onClick={() => startEdit(p)}
+                            className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded transition-all border border-emerald-500/20"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleDelete(p.id)}
+                            className="px-2 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded transition-all border border-rose-500/20"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -383,6 +770,237 @@ export const PostulantManagementView: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Modal de Simulación de Pago QR */}
+      {selectedPostulantForPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-6 shadow-2xl relative">
+            
+            <button
+              onClick={() => setSelectedPostulantForPayment(null)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-all text-sm font-bold"
+            >
+              ✕
+            </button>
+
+            <div className="text-center space-y-2">
+              <span className="px-3 py-1 bg-indigo-500/10 text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-indigo-500/20">
+                Pasarela de Pagos (CUP)
+              </span>
+              <h3 className="text-lg font-black text-white">Pago de Matrícula CUP</h3>
+              <p className="text-xxs text-slate-400">
+                Postulante: <strong className="text-slate-200">{selectedPostulantForPayment.nombres} {selectedPostulantForPayment.apellidos}</strong>
+              </p>
+              <p className="text-xxs text-slate-400">
+                CI: <strong className="text-slate-200">{selectedPostulantForPayment.ci}</strong>
+              </p>
+            </div>
+
+            <div className="flex flex-col items-center justify-center bg-white p-4 rounded-2xl border border-slate-800 shadow-inner">
+              {generatingPayment ? (
+                <div className="w-48 h-48 flex flex-col items-center justify-center gap-3 bg-slate-950/5 rounded-xl">
+                  <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Generando QR...</span>
+                </div>
+              ) : qrUrl ? (
+                <div className="space-y-3 flex flex-col items-center">
+                  <img src={qrUrl} alt="Simulador QR Pago" className="w-48 h-48 object-contain rounded-lg" />
+                  <span className="text-[9px] text-slate-500 font-mono select-all">Ref: {txnId}</span>
+                </div>
+              ) : (
+                <div className="text-rose-400 text-xs py-12">Error al generar QR.</div>
+              )}
+            </div>
+
+            <div className="text-center space-y-1">
+              <span className="text-xxs text-slate-500 font-bold block uppercase tracking-wider">Monto a Cancelar</span>
+              <span className="text-2xl font-black text-emerald-400">100.00 Bs</span>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                disabled={confirmingPayment || !txnId}
+                onClick={handleConfirmPayment}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all border border-emerald-400/20 flex items-center justify-center gap-2"
+              >
+                {confirmingPayment ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Procesando Pago...
+                  </>
+                ) : (
+                  <>
+                    <span>💳</span> Simular Confirmación Bancaria
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedPostulantForPayment(null)}
+                className="w-full py-2.5 bg-transparent hover:bg-slate-800 text-slate-400 hover:text-white text-xs font-bold rounded-xl transition-all"
+              >
+                Cancelar Transacción
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Detalle de Expediente (CU18/19) */}
+      {selectedPostulantForDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            
+            <button
+              onClick={() => setSelectedPostulantForDetails(null)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-all text-sm font-bold"
+            >
+              ✕
+            </button>
+
+            <div className="border-b border-slate-800 pb-3">
+              <span className="px-3 py-1 bg-indigo-500/10 text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-indigo-500/20">
+                Expediente Digital del Postulante
+              </span>
+              <h3 className="text-lg font-black text-white mt-2">
+                {selectedPostulantForDetails.apellidos}, {selectedPostulantForDetails.nombres}
+              </h3>
+              <p className="text-xxs text-slate-400 mt-1">
+                CI: <strong className="text-slate-350">{selectedPostulantForDetails.ci}</strong> | Correo: <strong className="text-slate-350">{selectedPostulantForDetails.correo}</strong>
+              </p>
+              <p className="text-xxs text-slate-400">
+                Opciones: 1ra: <strong className="text-indigo-400">{selectedPostulantForDetails.carreraOpcion1}</strong> | 2da: <strong className="text-indigo-400">{selectedPostulantForDetails.carreraOpcion2}</strong>
+              </p>
+            </div>
+
+            {/* Checklist de Requisitos Físicos */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider">Requisitos Entregados</h4>
+              <div className="grid grid-cols-3 gap-2">
+                <div className={`p-3 rounded-xl border text-center font-semibold text-xxs ${
+                  selectedPostulantForDetails.reqTituloBachiller 
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                    : 'bg-slate-950/40 border-slate-850 text-slate-550'
+                }`}>
+                  Título Bachiller {selectedPostulantForDetails.reqTituloBachiller ? '✓' : '✗'}
+                </div>
+                <div className={`p-3 rounded-xl border text-center font-semibold text-xxs ${
+                  selectedPostulantForDetails.reqCertificadoNacimiento 
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                    : 'bg-slate-950/40 border-slate-850 text-slate-550'
+                }`}>
+                  Cert. Nacimiento {selectedPostulantForDetails.reqCertificadoNacimiento ? '✓' : '✗'}
+                </div>
+                <div className={`p-3 rounded-xl border text-center font-semibold text-xxs ${
+                  selectedPostulantForDetails.reqCiFisico 
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                    : 'bg-slate-950/40 border-slate-850 text-slate-550'
+                }`}>
+                  CI Físico {selectedPostulantForDetails.reqCiFisico ? '✓' : '✗'}
+                </div>
+              </div>
+            </div>
+
+            {/* Observaciones (CU18) */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider">Observaciones sobre Requisitos [CU-18]</h4>
+              <textarea
+                value={observations}
+                onChange={(e) => setObservations(e.target.value)}
+                placeholder="Escriba observaciones de documentos físicos (faltantes, ilegibles, etc.)..."
+                className="w-full h-20 bg-slate-950 border border-slate-850 text-white rounded-xl p-3 text-xs focus:outline-none focus:border-indigo-500"
+              />
+              <button
+                type="button"
+                disabled={savingObs}
+                onClick={handleSaveObservations}
+                className="px-4 py-2 bg-indigo-650 hover:bg-indigo-500 disabled:bg-indigo-850 text-white text-xxs font-black uppercase tracking-wider rounded-xl transition-all border border-indigo-400/20 shadow"
+              >
+                {savingObs ? 'Guardando...' : '💾 Guardar Observaciones'}
+              </button>
+            </div>
+
+            {/* Comprobante de Pago Digital (CU19) */}
+            <div className="space-y-3 pt-3 border-t border-slate-850">
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider">Comprobante de Pago Digital [CU-19]</h4>
+              
+              {selectedPostulantForDetails.comprobantePago ? (
+                <div className="p-4 bg-slate-955 border border-slate-850 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xxs text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      ✓ Comprobante Digital Cargado
+                    </span>
+                    <a
+                      href={selectedPostulantForDetails.comprobantePago}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white border border-slate-750 text-[10px] font-black uppercase rounded-lg transition-all"
+                    >
+                      👁️ Ver Archivo
+                    </a>
+                  </div>
+                  
+                  {/* Vista previa si es imagen */}
+                  {/\.(jpg|jpeg|png|gif)$/i.test(selectedPostulantForDetails.comprobantePago) && (
+                    <img 
+                      src={selectedPostulantForDetails.comprobantePago} 
+                      alt="Comprobante Pago" 
+                      className="w-full max-h-40 object-contain rounded-xl border border-slate-800 bg-slate-900" 
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl text-center space-y-3">
+                  <p className="text-xxs text-slate-500 font-bold uppercase tracking-wider">
+                    Sin comprobante digital cargado
+                  </p>
+                  
+                  <div className="flex flex-col items-center gap-3">
+                    <input
+                      type="file"
+                      ref={fileReceiptRef}
+                      onChange={handleUploadReceipt}
+                      accept="image/*,.pdf"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      disabled={uploadingReceipt}
+                      onClick={() => fileReceiptRef.current?.click()}
+                      className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-850 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all border border-slate-750 flex items-center gap-2 shadow"
+                    >
+                      {uploadingReceipt ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Subiendo...
+                        </>
+                      ) : (
+                        <>
+                          <span>📂</span> Subir Comprobante Digital
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedPostulantForDetails(null)}
+                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs font-bold rounded-xl transition-all"
+              >
+                Cerrar Expediente
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };

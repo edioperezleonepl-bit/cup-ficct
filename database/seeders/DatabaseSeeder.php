@@ -56,7 +56,7 @@ class DatabaseSeeder extends Seeder
             'role' => 'coordinador',
         ]);
 
-        // 4. Sembrar cuenta de Alumno (Postulante)
+        // 4. Sembrar cuentas de Alumno (Postulantes)
         User::create([
             'name' => 'Rene Copa (Alumno)',
             'email' => 'alumno@ficct.uagrm.edu.bo',
@@ -64,55 +64,98 @@ class DatabaseSeeder extends Seeder
             'role' => 'alumno',
         ]);
 
-        // Sembrar registro de postulante vinculado al Alumno
-        $postulant = \App\Models\Postulant::create([
-            'ci' => '1234567',
-            'nombres' => 'Rene',
-            'apellidos' => 'Copa Justiniano',
-            'fecha_nacimiento' => '2005-04-12',
-            'sexo' => 'M',
-            'direccion' => 'Av. Bush, Calle 4, Nro 45',
-            'telefono' => '78945612',
-            'correo_electronico' => 'alumno@ficct.uagrm.edu.bo',
-            'colegio_procedencia' => 'Colegio La Salle',
-            'ciudad' => 'Santa Cruz',
-            'titulo_bachiller' => true,
-            'carrera_opcion1_id' => $c1->id,
-            'carrera_opcion2_id' => $c2->id,
-            'carrera_admitida_id' => $c1->id,
-            'estado_admision' => 'ADMITIDO',
-            'grupo_id' => null,
+        User::create([
+            'name' => 'Sebastian Arteaga (Alumno)',
+            'email' => 'seb@gmail.com',
+            'password' => bcrypt('7636'),
+            'role' => 'alumno',
         ]);
 
-        // Sembrar 3 exámenes por materia para el alumno
-        $subjectsList = \App\Models\Subject::all();
-        foreach ($subjectsList as $sub) {
-            \App\Models\Exam::create([
-                'postulant_id' => $postulant->id,
-                'subject_id' => $sub->id,
-                'exam_number' => 1,
-                'grade' => 75.00
-            ]);
-            \App\Models\Exam::create([
-                'postulant_id' => $postulant->id,
-                'subject_id' => $sub->id,
-                'exam_number' => 2,
-                'grade' => 80.00
-            ]);
-            \App\Models\Exam::create([
-                'postulant_id' => $postulant->id,
-                'subject_id' => $sub->id,
-                'exam_number' => 3,
-                'grade' => 85.00
-            ]);
+        // Sembrar registros de postulantes vinculados a los Alumnos
+        $postulantsData = [
+            [
+                'ci' => '1234567',
+                'nombres' => 'Rene',
+                'apellidos' => 'Copa Justiniano',
+                'fecha_nacimiento' => '2005-04-12',
+                'sexo' => 'M',
+                'direccion' => 'Av. Bush, Calle 4, Nro 45',
+                'telefono' => '78945612',
+                'correo_electronico' => 'alumno@ficct.uagrm.edu.bo',
+                'colegio_procedencia' => 'Colegio La Salle',
+                'ciudad' => 'Santa Cruz',
+                'titulo_bachiller' => true,
+                'pago_realizado' => true,
+                'transaccion_pago_id' => 'TXN-SEEDER-RENE',
+                'monto_pagado' => 100.00,
+                'carrera_opcion1_id' => $c1->id,
+                'carrera_opcion2_id' => $c2->id,
+                'carrera_admitida_id' => $c1->id,
+                'estado_admision' => 'ADMITIDO',
+                'grupo_id' => null,
+                'grades' => [75.00, 80.00, 85.00],
+            ],
+            [
+                'ci' => '8765432',
+                'nombres' => 'Sebastian',
+                'apellidos' => 'Arteaga Melgar',
+                'fecha_nacimiento' => '2004-08-20',
+                'sexo' => 'M',
+                'direccion' => 'Av. San Aurelio, Calle 2',
+                'telefono' => '71234567',
+                'correo_electronico' => 'seb@gmail.com',
+                'colegio_procedencia' => 'Colegio La Salle',
+                'ciudad' => 'Santa Cruz',
+                'titulo_bachiller' => false,
+                'pago_realizado' => false,
+                'transaccion_pago_id' => null,
+                'monto_pagado' => 0.00,
+                'carrera_opcion1_id' => $c1->id,
+                'carrera_opcion2_id' => $c2->id,
+                'carrera_admitida_id' => null,
+                'estado_admision' => 'REPROBADO',
+                'grupo_id' => null,
+                'grades' => [45.00, 50.00, 55.00],
+            ]
+        ];
 
-            // Crear el promedio de materia
-            \App\Models\SubjectAverage::create([
-                'postulant_id' => $postulant->id,
-                'subject_id' => $sub->id,
-                'average' => 80.00,
-                'status' => 'APROBADO'
-            ]);
+        $subjectsList = \App\Models\Subject::all();
+        foreach ($postulantsData as $pData) {
+            $grades = $pData['grades'];
+            unset($pData['grades']);
+
+            $postulant = \App\Models\Postulant::create($pData);
+
+            // Sembrar 3 exámenes por materia para cada postulante
+            foreach ($subjectsList as $sub) {
+                \App\Models\Exam::create([
+                    'postulant_id' => $postulant->id,
+                    'subject_id' => $sub->id,
+                    'exam_number' => 1,
+                    'grade' => $grades[0]
+                ]);
+                \App\Models\Exam::create([
+                    'postulant_id' => $postulant->id,
+                    'subject_id' => $sub->id,
+                    'exam_number' => 2,
+                    'grade' => $grades[1]
+                ]);
+                \App\Models\Exam::create([
+                    'postulant_id' => $postulant->id,
+                    'subject_id' => $sub->id,
+                    'exam_number' => 3,
+                    'grade' => $grades[2]
+                ]);
+
+                // Calcular promedio por materia
+                $average = array_sum($grades) / 3;
+                \App\Models\SubjectAverage::create([
+                    'postulant_id' => $postulant->id,
+                    'subject_id' => $sub->id,
+                    'average' => $average,
+                    'status' => $average >= 51 ? 'APROBADO' : 'REPROBADO'
+                ]);
+            }
         }
     }
 }
