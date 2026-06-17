@@ -705,11 +705,11 @@ export const PostulantManagementView: React.FC = () => {
                             Expediente
                           </button>
                           <a
-                            href={`/api/postulants/${p.id}/credential`}
+                            href={`/api/postulants/${p.id}/qr-png`}
                             target="_blank"
                             rel="noreferrer"
                             className="px-2 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 rounded transition-all border border-sky-500/20 flex items-center"
-                            title="Descargar Credencial PDF con QR"
+                            title="Descargar código QR en formato PNG"
                           >
                             📥 QR
                           </a>

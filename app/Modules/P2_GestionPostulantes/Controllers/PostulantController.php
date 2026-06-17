@@ -763,4 +763,40 @@ class PostulantController extends Controller
             'attendances' => $formatted
         ]);
     }
+
+    /**
+     * Descarga el código QR del postulante directamente en formato PNG.
+     * 
+     * GET /api/postulants/{id}/qr-png
+     */
+    public function downloadQrPng($id)
+    {
+        $postulant = Postulant::find($id);
+        if (!$postulant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Postulante no encontrado.',
+            ], 404);
+        }
+
+        $qrData = urlencode("CUP-POSTULANT-ID:{$postulant->id}");
+        $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={$qrData}";
+
+        try {
+            $qrImageData = file_get_contents($qrApiUrl);
+            if ($qrImageData !== false) {
+                return response($qrImageData, 200, [
+                    'Content-Type' => 'image/png',
+                    'Content-Disposition' => 'attachment; filename="qr_postulante_' . $postulant->ci . '.png"',
+                ]);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar el código QR en PNG.',
+            ], 500);
+        }
+
+        return redirect($qrApiUrl);
+    }
 }

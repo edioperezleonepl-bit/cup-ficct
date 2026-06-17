@@ -61,6 +61,7 @@ Route::prefix('api')->group(function () {
     Route::put('/postulants/{id}',         [PostulantController::class, 'update']);
     Route::delete('/postulants/{id}',      [PostulantController::class, 'destroy']);
     Route::get('/postulants/{id}/credential', [PostulantController::class, 'generateCredential']);
+    Route::get('/postulants/{id}/qr-png', [PostulantController::class, 'downloadQrPng']);
     Route::get('/postulants/{id}/verify-qr', [PostulantController::class, 'verifyQr']);
     Route::post('/postulants/{id}/attendance', [PostulantController::class, 'registerAttendance']);
 
