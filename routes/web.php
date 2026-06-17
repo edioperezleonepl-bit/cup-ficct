@@ -57,8 +57,13 @@ Route::prefix('api')->group(function () {
     Route::get('/postulants',              [PostulantController::class, 'index']);
     Route::post('/postulants',             [PostulantController::class, 'store']);
     Route::post('/postulants/import-csv',  [PostulantController::class, 'importCsv']);
+    Route::get('/postulants/attendances',  [PostulantController::class, 'listAttendances']);
     Route::put('/postulants/{id}',         [PostulantController::class, 'update']);
     Route::delete('/postulants/{id}',      [PostulantController::class, 'destroy']);
+    Route::get('/postulants/{id}/credential', [PostulantController::class, 'generateCredential']);
+    Route::get('/postulants/{id}/verify-qr', [PostulantController::class, 'verifyQr']);
+    Route::post('/postulants/{id}/attendance', [PostulantController::class, 'registerAttendance']);
+
 
     // ── M3: CU06/CU19 — Pagos e inscripción ───────────────────────────────
     Route::post('/postulants/pay/generate', [PaymentController::class, 'generatePayment']);

@@ -14,6 +14,7 @@ import SettingManagementView from './Components/SettingManagementView';   // [CU
 import AcademicAssignmentView from './Components/AcademicAssignmentView'; // [CU-14] Asignación Académica
 import SystemLogView from './Components/SystemLogView';                   // [CU-17] Bitácora del Sistema
 import DashboardOverview from './Components/DashboardOverview';           // [CU-15/16/20/23] Dashboard y Reportes
+import PostulantQrScanner from './Components/PostulantQrScanner';           // Control de Asistencia QR [CU-27]
 
 // ============================================================================
 // Aplicación Principal de Admisión Universitaria (CUP) - FICCT
@@ -281,6 +282,7 @@ const App = () => {
                   { id: 'dashboard', label: '📊 Reportes [CU-15/16/20/23]', rolesAllowed: ['admin', 'coordinador', 'autoridades'] },
                   { id: 'users', label: '👥 Usuarios [CU-03]', rolesAllowed: ['admin'] },
                   { id: 'postulants', label: '📝 Postulantes [CU-04]', rolesAllowed: ['admin', 'coordinador', 'autoridades'] },
+                  { id: 'qr-scanner', label: '📷 Escáner Asistencia [CU-27]', rolesAllowed: ['admin', 'coordinador', 'docente'] },
                   { id: 'careers', label: '🏢 Carreras [CU-07]', rolesAllowed: ['admin', 'coordinador', 'autoridades'] },
                   { id: 'groups', label: '📦 Grupos [CU-12]', rolesAllowed: ['admin', 'coordinador', 'autoridades'] },
                   { id: 'teachers', label: '🍎 Docentes [CU-08]', rolesAllowed: ['admin', 'coordinador'] },
@@ -344,6 +346,7 @@ const App = () => {
             { id: 'dashboard', label: '📊 Reportes [CU-15/16/20/23]', rolesAllowed: ['admin', 'coordinador', 'autoridades'] },
             { id: 'users', label: '👥 Usuarios [CU-03]', rolesAllowed: ['admin'] },
             { id: 'postulants', label: '📝 Postulantes [CU-04]', rolesAllowed: ['admin', 'coordinador', 'autoridades'] },
+            { id: 'qr-scanner', label: '📷 Escáner Asistencia [CU-27]', rolesAllowed: ['admin', 'coordinador', 'docente'] },
             { id: 'careers', label: '🏢 Carreras [CU-07]', rolesAllowed: ['admin', 'coordinador', 'autoridades'] },
             { id: 'groups', label: '📦 Grupos [CU-12]', rolesAllowed: ['admin', 'coordinador', 'autoridades'] },
             { id: 'teachers', label: '🍎 Docentes [CU-08]', rolesAllowed: ['admin', 'coordinador'] },
@@ -419,6 +422,16 @@ const App = () => {
                           ? '❌ REPROBADO' 
                           : '⏳ EN PROCESO'}
                       </p>
+                      {alumnoData.postulant.estado_admision !== 'REPROBADO' && (
+                        <a 
+                          href={`/api/postulants/${alumnoData.postulant.id}/credential`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-block px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-colors border border-indigo-500 shadow-md"
+                        >
+                          📥 Descargar Credencial
+                        </a>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -525,6 +538,7 @@ const App = () => {
             {activeTab === 'dashboard' && <DashboardOverview />}
             {activeTab === 'users' && <UserManagementView />}
             {activeTab === 'postulants' && <PostulantManagementView />}
+            {activeTab === 'qr-scanner' && <PostulantQrScanner />}
             {activeTab === 'careers' && <CareerManagementView />}
             {activeTab === 'groups' && <GroupDistributionView />}
             {activeTab === 'teachers' && <TeacherManagementView />}

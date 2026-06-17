@@ -14,6 +14,12 @@ interface Postulant {
   nombres: string;
   apellidos: string;
   correo: string;
+  fechaNacimiento: string;
+  sexo: string;
+  direccion: string;
+  telefono: string;
+  colegioProcedencia: string;
+  ciudad: string;
   carreraOpcion1: string;
   carreraOpcion2: string;
   // Requisitos [CU-06]
@@ -26,6 +32,8 @@ interface Postulant {
   montoPagado: number;
   observacionesRequisitos?: string | null;
   comprobantePago?: string | null;
+  asistencia?: string;
+  asistencia_at?: string | null;
 }
 
 export const PostulantManagementView: React.FC = () => {
@@ -41,6 +49,12 @@ export const PostulantManagementView: React.FC = () => {
   const [nombres, setNombres] = useState('');
   const [apellidos, setApellidos] = useState('');
   const [correo, setCorreo] = useState('');
+  const [fechaNacimiento, setFechaNacimiento] = useState('');
+  const [sexo, setSexo] = useState('M');
+  const [direccion, setDireccion] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [colegioProcedencia, setColegioProcedencia] = useState('');
+  const [ciudad, setCiudad] = useState('Santa Cruz');
   const [carreraOpcion1, setCarreraOpcion1] = useState('Ingeniería Informática');
   const [carreraOpcion2, setCarreraOpcion2] = useState('Ingeniería de Sistemas');
   
@@ -301,7 +315,7 @@ export const PostulantManagementView: React.FC = () => {
   // Guardar postulante (Crear o Modificar) [CU-04.2] / [CU-04.3]
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ci || !nombres || !apellidos || !correo) {
+    if (!ci || !nombres || !apellidos || !correo || !fechaNacimiento || !sexo || !direccion || !telefono || !colegioProcedencia || !ciudad) {
       alert('Por favor, rellena todos los campos obligatorios.');
       return;
     }
@@ -311,6 +325,12 @@ export const PostulantManagementView: React.FC = () => {
       nombres,
       apellidos,
       correo,
+      fechaNacimiento,
+      sexo,
+      direccion,
+      telefono,
+      colegioProcedencia,
+      ciudad,
       carreraOpcion1,
       carreraOpcion2,
       reqTituloBachiller: reqTitulo,
@@ -377,6 +397,12 @@ export const PostulantManagementView: React.FC = () => {
     setNombres(p.nombres);
     setApellidos(p.apellidos);
     setCorreo(p.correo);
+    setFechaNacimiento(p.fechaNacimiento || '');
+    setSexo(p.sexo || 'M');
+    setDireccion(p.direccion || '');
+    setTelefono(p.telefono || '');
+    setColegioProcedencia(p.colegioProcedencia || '');
+    setCiudad(p.ciudad || 'Santa Cruz');
     setCarreraOpcion1(p.carreraOpcion1);
     setCarreraOpcion2(p.carreraOpcion2);
     setReqTitulo(p.reqTituloBachiller);
@@ -416,6 +442,12 @@ export const PostulantManagementView: React.FC = () => {
     setNombres('');
     setApellidos('');
     setCorreo('');
+    setFechaNacimiento('');
+    setSexo('M');
+    setDireccion('');
+    setTelefono('');
+    setColegioProcedencia('');
+    setCiudad('Santa Cruz');
     setCarreraOpcion1('Ingeniería Informática');
     setCarreraOpcion2('Ingeniería de Sistemas');
     setReqTitulo(false);
@@ -579,6 +611,7 @@ export const PostulantManagementView: React.FC = () => {
                   <th className="p-4">Opciones de Carrera</th>
                   <th className="p-4">Requisitos Entregados</th>
                   <th className="p-4 text-center">Pago (CUP)</th>
+                  <th className="p-4 text-center">Asistencia</th>
                   <th className="p-4">Acciones</th>
                 </tr>
               </thead>
@@ -647,8 +680,21 @@ export const PostulantManagementView: React.FC = () => {
                           </span>
                         )}
                       </td>
+                      <td className="p-4 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${
+                          p.asistencia === 'PRESENTE'
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                            : p.asistencia === 'TARDE'
+                            ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                            : p.asistencia === 'OBSERVADO'
+                            ? 'bg-orange-500/10 border-orange-500/20 text-orange-400'
+                            : 'bg-slate-800 border-slate-750 text-slate-400'
+                        }`} title={p.asistencia_at ? `Registrado: ${p.asistencia_at}` : ''}>
+                          {p.asistencia || 'PENDIENTE'}
+                        </span>
+                      </td>
                       <td className="p-4">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <button
                             onClick={() => {
                               setSelectedPostulantForDetails(p);
@@ -658,8 +704,18 @@ export const PostulantManagementView: React.FC = () => {
                           >
                             Expediente
                           </button>
+                          <a
+                            href={`/api/postulants/${p.id}/credential`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 rounded transition-all border border-sky-500/20 flex items-center"
+                            title="Descargar Credencial PDF con QR"
+                          >
+                            📥 QR
+                          </a>
                           <button
                             onClick={() => startEdit(p)}
+
                             className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded transition-all border border-emerald-500/20"
                           >
                             Editar
@@ -727,6 +783,74 @@ export const PostulantManagementView: React.FC = () => {
                 required
                 value={correo}
                 onChange={(e) => setCorreo(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 text-white rounded-xl px-3 py-2 text-xs focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-slate-400 font-bold block uppercase">Fecha de Nacimiento *</label>
+              <input
+                type="date"
+                required
+                value={fechaNacimiento}
+                onChange={(e) => setFechaNacimiento(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 text-white rounded-xl px-3 py-2 text-xs focus:outline-none cursor-pointer"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-slate-400 font-bold block uppercase">Sexo *</label>
+              <select
+                required
+                value={sexo}
+                onChange={(e) => setSexo(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 text-white rounded-xl px-3 py-2 text-xs focus:outline-none cursor-pointer"
+              >
+                <option value="M">Masculino</option>
+                <option value="F">Femenino</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-slate-400 font-bold block uppercase">Dirección *</label>
+              <input
+                type="text"
+                required
+                value={direccion}
+                onChange={(e) => setDireccion(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 text-white rounded-xl px-3 py-2 text-xs focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-slate-400 font-bold block uppercase">Teléfono *</label>
+              <input
+                type="text"
+                required
+                value={telefono}
+                onChange={(e) => setTelefono(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 text-white rounded-xl px-3 py-2 text-xs focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-slate-400 font-bold block uppercase">Colegio de Procedencia *</label>
+              <input
+                type="text"
+                required
+                value={colegioProcedencia}
+                onChange={(e) => setColegioProcedencia(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 text-white rounded-xl px-3 py-2 text-xs focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-slate-400 font-bold block uppercase">Ciudad *</label>
+              <input
+                type="text"
+                required
+                value={ciudad}
+                onChange={(e) => setCiudad(e.target.value)}
                 className="w-full bg-slate-900 border border-slate-800 text-white rounded-xl px-3 py-2 text-xs focus:outline-none"
               />
             </div>
@@ -841,6 +965,14 @@ export const PostulantManagementView: React.FC = () => {
               <p className="text-xxs text-slate-400">
                 Opciones: 1ra: <strong className="text-indigo-400">{selectedPostulantForDetails.carreraOpcion1}</strong> | 2da: <strong className="text-indigo-400">{selectedPostulantForDetails.carreraOpcion2}</strong>
               </p>
+              <div className="grid grid-cols-2 gap-2 mt-3 text-[10px] text-slate-400 bg-slate-950/40 p-3 rounded-xl border border-slate-850">
+                <p>📅 Nacimiento: <strong className="text-slate-300">{selectedPostulantForDetails.fechaNacimiento || 'S/D'}</strong></p>
+                <p>🧬 Sexo: <strong className="text-slate-300">{selectedPostulantForDetails.sexo === 'M' ? 'Masculino' : selectedPostulantForDetails.sexo === 'F' ? 'Femenino' : selectedPostulantForDetails.sexo}</strong></p>
+                <p>📍 Dirección: <strong className="text-slate-300">{selectedPostulantForDetails.direccion || 'S/D'}</strong></p>
+                <p>📞 Teléfono: <strong className="text-slate-300">{selectedPostulantForDetails.telefono || 'S/D'}</strong></p>
+                <p>🏫 Colegio: <strong className="text-slate-300">{selectedPostulantForDetails.colegioProcedencia || 'S/D'}</strong></p>
+                <p>🏙️ Ciudad: <strong className="text-slate-300">{selectedPostulantForDetails.ciudad || 'S/D'}</strong></p>
+              </div>
             </div>
 
             {/* Checklist de Requisitos Físicos */}

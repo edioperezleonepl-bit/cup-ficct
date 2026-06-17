@@ -100,4 +100,12 @@ class Postulant extends Model
     {
         return $this->hasMany(SubjectAverage::class, 'postulant_id');
     }
+
+    /**
+     * Relación con los registros de asistencia del postulante.
+     */
+    public function attendances(): HasMany
+    {
+        return $this->hasMany(PostulantAttendance::class, 'postulant_id');
+    }
 }

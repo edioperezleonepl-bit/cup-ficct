@@ -31,15 +31,22 @@ class PostulantController extends Controller
      */
     public function index(): JsonResponse
     {
-        $postulants = Postulant::with(['carreraOpcion1', 'carreraOpcion2'])->get();
+        $postulants = Postulant::with(['carreraOpcion1', 'carreraOpcion2', 'attendances'])->get();
 
         $formatted = $postulants->map(function ($p) {
+            $lastAttendance = $p->attendances->sortByDesc('scanned_at')->first();
             return [
                 'id'                       => $p->id,
                 'ci'                       => $p->ci,
                 'nombres'                  => $p->nombres,
                 'apellidos'                => $p->apellidos,
                 'correo'                   => $p->correo_electronico,
+                'fechaNacimiento'          => $p->fecha_nacimiento ? $p->fecha_nacimiento->format('Y-m-d') : '',
+                'sexo'                     => $p->sexo,
+                'direccion'                => $p->direccion,
+                'telefono'                 => $p->telefono,
+                'colegioProcedencia'       => $p->colegio_procedencia,
+                'ciudad'                   => $p->ciudad,
                 'carreraOpcion1'           => $p->carreraOpcion1 ? $p->carreraOpcion1->name : '',
                 'carreraOpcion2'           => $p->carreraOpcion2 ? $p->carreraOpcion2->name : '',
                 'reqTituloBachiller'       => (bool) $p->titulo_bachiller,
@@ -50,6 +57,8 @@ class PostulantController extends Controller
                 'montoPagado'              => (float) $p->monto_pagado,
                 'observacionesRequisitos'  => $p->observaciones_requisitos,
                 'comprobantePago'          => $p->comprobante_pago,
+                'asistencia'               => $lastAttendance ? $lastAttendance->status : 'PENDIENTE',
+                'asistencia_at'            => $lastAttendance ? $lastAttendance->scanned_at->format('Y-m-d H:i:s') : null,
             ];
         });
 
@@ -64,12 +73,18 @@ class PostulantController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'ci'            => 'required|string|unique:postulants,ci',
-            'nombres'       => 'required|string',
-            'apellidos'     => 'required|string',
-            'correo'        => 'required|email|unique:postulants,correo_electronico',
-            'carreraOpcion1' => 'required|string',
-            'carreraOpcion2' => 'required|string',
+            'ci'                  => 'required|string|unique:postulants,ci',
+            'nombres'             => 'required|string',
+            'apellidos'           => 'required|string',
+            'correo'              => 'required|email|unique:postulants,correo_electronico',
+            'fechaNacimiento'     => 'required|date',
+            'sexo'                => 'required|string|max:10',
+            'direccion'           => 'required|string',
+            'telefono'            => 'required|string',
+            'colegioProcedencia'  => 'required|string',
+            'ciudad'              => 'required|string',
+            'carreraOpcion1'      => 'required|string',
+            'carreraOpcion2'      => 'required|string',
         ]);
 
         $c1 = Career::where('name', $request->input('carreraOpcion1'))->first();
@@ -91,13 +106,13 @@ class PostulantController extends Controller
             'ci'                 => $request->input('ci'),
             'nombres'            => $request->input('nombres'),
             'apellidos'          => $request->input('apellidos'),
-            'fecha_nacimiento'   => '2005-01-01',
-            'sexo'               => 'M',
-            'direccion'          => 'S/D',
-            'telefono'           => '00000000',
+            'fecha_nacimiento'   => $request->input('fechaNacimiento'),
+            'sexo'               => $request->input('sexo'),
+            'direccion'          => $request->input('direccion'),
+            'telefono'           => $request->input('telefono'),
             'correo_electronico' => $email,
-            'colegio_procedencia' => 'S/D',
-            'ciudad'             => 'Santa Cruz',
+            'colegio_procedencia'=> $request->input('colegioProcedencia'),
+            'ciudad'             => $request->input('ciudad'),
             'titulo_bachiller'   => (bool) $request->input('reqTituloBachiller'),
             'carrera_opcion1_id' => $c1 ? $c1->id : 1,
             'carrera_opcion2_id' => $c2 ? $c2->id : 2,
@@ -115,6 +130,12 @@ class PostulantController extends Controller
                 'nombres'                  => $postulant->nombres,
                 'apellidos'                => $postulant->apellidos,
                 'correo'                   => $postulant->correo_electronico,
+                'fechaNacimiento'          => $postulant->fecha_nacimiento ? $postulant->fecha_nacimiento->format('Y-m-d') : '',
+                'sexo'                     => $postulant->sexo,
+                'direccion'                => $postulant->direccion,
+                'telefono'                 => $postulant->telefono,
+                'colegioProcedencia'       => $postulant->colegio_procedencia,
+                'ciudad'                   => $postulant->ciudad,
                 'carreraOpcion1'           => $c1 ? $c1->name : '',
                 'carreraOpcion2'           => $c2 ? $c2->name : '',
                 'reqTituloBachiller'       => (bool) $postulant->titulo_bachiller,
@@ -135,12 +156,18 @@ class PostulantController extends Controller
     public function update(Request $request, $id): JsonResponse
     {
         $request->validate([
-            'ci'            => 'required|string|unique:postulants,ci,' . $id,
-            'nombres'       => 'required|string',
-            'apellidos'     => 'required|string',
-            'correo'        => 'required|email|unique:postulants,correo_electronico,' . $id,
-            'carreraOpcion1' => 'required|string',
-            'carreraOpcion2' => 'required|string',
+            'ci'                  => 'required|string|unique:postulants,ci,' . $id,
+            'nombres'             => 'required|string',
+            'apellidos'           => 'required|string',
+            'correo'              => 'required|email|unique:postulants,correo_electronico,' . $id,
+            'fechaNacimiento'     => 'required|date',
+            'sexo'                => 'required|string|max:10',
+            'direccion'           => 'required|string',
+            'telefono'            => 'required|string',
+            'colegioProcedencia'  => 'required|string',
+            'ciudad'              => 'required|string',
+            'carreraOpcion1'      => 'required|string',
+            'carreraOpcion2'      => 'required|string',
         ]);
 
         $postulant = Postulant::find($id);
@@ -170,7 +197,13 @@ class PostulantController extends Controller
             'ci'                 => $request->input('ci'),
             'nombres'            => $request->input('nombres'),
             'apellidos'          => $request->input('apellidos'),
+            'fecha_nacimiento'   => $request->input('fechaNacimiento'),
+            'sexo'               => $request->input('sexo'),
+            'direccion'          => $request->input('direccion'),
+            'telefono'           => $request->input('telefono'),
             'correo_electronico' => $newEmail,
+            'colegio_procedencia'=> $request->input('colegioProcedencia'),
+            'ciudad'             => $request->input('ciudad'),
             'titulo_bachiller'   => (bool) $request->input('reqTituloBachiller'),
             'carrera_opcion1_id' => $c1 ? $c1->id : $postulant->carrera_opcion1_id,
             'carrera_opcion2_id' => $c2 ? $c2->id : $postulant->carrera_opcion2_id,
@@ -187,6 +220,12 @@ class PostulantController extends Controller
                 'nombres'                  => $postulant->nombres,
                 'apellidos'                => $postulant->apellidos,
                 'correo'                   => $postulant->correo_electronico,
+                'fechaNacimiento'          => $postulant->fecha_nacimiento ? $postulant->fecha_nacimiento->format('Y-m-d') : '',
+                'sexo'                     => $postulant->sexo,
+                'direccion'                => $postulant->direccion,
+                'telefono'                 => $postulant->telefono,
+                'colegioProcedencia'       => $postulant->colegio_procedencia,
+                'ciudad'                   => $postulant->ciudad,
                 'carreraOpcion1'           => $c1 ? $c1->name : '',
                 'carreraOpcion2'           => $c2 ? $c2->name : '',
                 'reqTituloBachiller'       => (bool) $postulant->titulo_bachiller,
@@ -562,6 +601,166 @@ class PostulantController extends Controller
             'success' => true,
             'message' => 'Comprobante subido exitosamente.',
             'path'    => $path,
+        ]);
+    }
+
+    /**
+     * Genera una credencial en PDF con código QR para el examen del postulante.
+     *
+     * GET /api/postulants/{id}/credential
+     */
+    public function generateCredential($id)
+    {
+        $postulant = Postulant::with(['carreraOpcion1'])->find($id);
+        if (!$postulant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Postulante no encontrado.',
+            ], 404);
+        }
+
+        // Generar la URL de la API de QR codificando una clave legible por el escáner
+        $qrData = urlencode("CUP-POSTULANT-ID:{$postulant->id}");
+        $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={$qrData}";
+
+        // Descargar la imagen QR y convertirla a base64 para incrustarla en el PDF
+        // (DomPDF no puede cargar imágenes desde URLs externas por defecto)
+        $qrBase64 = '';
+        try {
+            $qrImageData = file_get_contents($qrApiUrl);
+            if ($qrImageData !== false) {
+                $qrBase64 = 'data:image/png;base64,' . base64_encode($qrImageData);
+            }
+        } catch (\Exception $e) {
+            // Si falla la descarga del QR, se generará el PDF sin imagen QR
+        }
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.credential', [
+            'postulant' => $postulant,
+            'qrBase64'  => $qrBase64,
+        ]);
+
+        return $pdf->download("credencial_postulante_{$postulant->ci}.pdf");
+    }
+
+    /**
+     * Verifica los datos de un postulante a partir de su ID de QR.
+     * 
+     * GET /api/postulants/{id}/verify-qr
+     */
+    public function verifyQr($id): JsonResponse
+    {
+        $postulant = Postulant::with(['carreraOpcion1', 'grupo', 'attendances'])
+            ->where('id', $id)
+            ->orWhere('ci', $id)
+            ->first();
+        if (!$postulant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Postulante no encontrado.',
+            ], 404);
+        }
+
+        $lastAttendance = $postulant->attendances()->orderBy('scanned_at', 'desc')->first();
+        
+        // Obtener aulas asociadas al grupo del postulante
+        $classrooms = '';
+        if ($postulant->grupo_id) {
+            $classrooms = \App\Modules\P4_CarrerasYGrupos\Models\AcademicAssignment::where('group_id', $postulant->grupo_id)
+                ->pluck('classroom')
+                ->unique()
+                ->filter()
+                ->implode(', ');
+        }
+
+        return response()->json([
+            'success' => true,
+            'postulant' => [
+                'id'               => $postulant->id,
+                'ci'               => $postulant->ci,
+                'nombres'          => $postulant->nombres,
+                'apellidos'        => $postulant->apellidos,
+                'carrera'          => $postulant->carreraOpcion1 ? $postulant->carreraOpcion1->name : 'Sin carrera asignada',
+                'grupo'            => $postulant->grupo ? $postulant->grupo->name : 'Sin grupo',
+                'aulas'            => $classrooms ?: 'No asignadas',
+                'pago_realizado'   => (bool) $postulant->pago_realizado,
+                'titulo_bachiller' => (bool) $postulant->titulo_bachiller,
+                'estado_admision'  => $postulant->estado_admision ?: 'PENDIENTE',
+                'ya_ingreso'       => $lastAttendance ? true : false,
+                'ingreso_at'       => $lastAttendance ? $lastAttendance->scanned_at->format('Y-m-d H:i:s') : null,
+                'ingreso_status'   => $lastAttendance ? $lastAttendance->status : null,
+            ]
+        ]);
+    }
+
+    /**
+     * Registra la asistencia (ingreso) de un postulante.
+     * 
+     * POST /api/postulants/{id}/attendance
+     */
+    public function registerAttendance(Request $request, $id): JsonResponse
+    {
+        $postulant = Postulant::find($id);
+        if (!$postulant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Postulante no encontrado.',
+            ], 404);
+        }
+
+        $status = $request->input('status', 'PRESENTE');
+        $comments = $request->input('comments');
+        $scannedBy = auth()->id();
+
+        $attendance = \App\Modules\P2_GestionPostulantes\Models\PostulantAttendance::create([
+            'postulant_id' => $postulant->id,
+            'scanned_by'   => $scannedBy,
+            'status'       => $status,
+            'scanned_at'   => now(),
+            'comments'     => $comments,
+        ]);
+
+        $userName = auth()->user() ? auth()->user()->name : 'Sistema';
+        SystemLog::log('ASISTENCIA_POSTULANTE_REGISTRADA', "Ingreso registrado para postulante {$postulant->nombres} {$postulant->apellidos} (CI: {$postulant->ci}) con estado '{$status}' por {$userName}.");
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Asistencia registrada con éxito.',
+            'attendance' => [
+                'id' => $attendance->id,
+                'status' => $attendance->status,
+                'scanned_at' => $attendance->scanned_at->format('Y-m-d H:i:s'),
+            ]
+        ]);
+    }
+
+    /**
+     * Lista los registros de asistencia de todos los postulantes.
+     * 
+     * GET /api/postulants/attendances
+     */
+    public function listAttendances(): JsonResponse
+    {
+        $attendances = \App\Modules\P2_GestionPostulantes\Models\PostulantAttendance::with(['postulant.carreraOpcion1', 'postulant.grupo', 'scanner'])->get();
+
+        $formatted = $attendances->map(function ($a) {
+            return [
+                'id'           => $a->id,
+                'postulant_id' => $a->postulant_id,
+                'ci'           => $a->postulant ? $a->postulant->ci : 'N/A',
+                'nombre'       => $a->postulant ? $a->postulant->nombres . ' ' . $a->postulant->apellidos : 'N/A',
+                'carrera'      => $a->postulant && $a->postulant->carreraOpcion1 ? $a->postulant->carreraOpcion1->name : 'N/A',
+                'grupo'        => $a->postulant && $a->postulant->grupo ? $a->postulant->grupo->name : 'N/A',
+                'status'       => $a->status,
+                'scanned_at'   => $a->scanned_at ? $a->scanned_at->format('Y-m-d H:i:s') : 'N/A',
+                'scanner_name' => $a->scanner ? $a->scanner->name : 'Sistema',
+                'comments'     => $a->comments,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'attendances' => $formatted
         ]);
     }
 }
