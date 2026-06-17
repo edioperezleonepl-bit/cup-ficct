@@ -619,6 +619,26 @@ class PostulantController extends Controller
             ], 404);
         }
 
+        // En localhost, descargar solo el código QR en formato PNG
+        if (config('app.env') === 'local') {
+            $qrData = urlencode("CUP-POSTULANT-ID:{$postulant->id}");
+            $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={$qrData}";
+
+            try {
+                $qrImageData = file_get_contents($qrApiUrl);
+                if ($qrImageData !== false) {
+                    return response($qrImageData, 200, [
+                        'Content-Type' => 'image/png',
+                        'Content-Disposition' => 'attachment; filename="qr_postulante_' . $postulant->ci . '.png"',
+                    ]);
+                }
+            } catch (\Exception $e) {
+                // Si falla la descarga, redirigir al QR directamente
+            }
+
+            return redirect($qrApiUrl);
+        }
+
         // Generar la URL de la API de QR codificando una clave legible por el escáner
         $qrData = urlencode("CUP-POSTULANT-ID:{$postulant->id}");
         $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={$qrData}";
@@ -764,39 +784,4 @@ class PostulantController extends Controller
         ]);
     }
 
-    /**
-     * Descarga el código QR del postulante directamente en formato PNG.
-     * 
-     * GET /api/postulants/{id}/qr-png
-     */
-    public function downloadQrPng($id)
-    {
-        $postulant = Postulant::find($id);
-        if (!$postulant) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Postulante no encontrado.',
-            ], 404);
-        }
-
-        $qrData = urlencode("CUP-POSTULANT-ID:{$postulant->id}");
-        $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={$qrData}";
-
-        try {
-            $qrImageData = file_get_contents($qrApiUrl);
-            if ($qrImageData !== false) {
-                return response($qrImageData, 200, [
-                    'Content-Type' => 'image/png',
-                    'Content-Disposition' => 'attachment; filename="qr_postulante_' . $postulant->ci . '.png"',
-                ]);
-            }
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al generar el código QR en PNG.',
-            ], 500);
-        }
-
-        return redirect($qrApiUrl);
-    }
 }

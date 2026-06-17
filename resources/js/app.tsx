@@ -424,12 +424,12 @@ const App = () => {
                       </p>
                       {alumnoData.postulant.estado_admision !== 'REPROBADO' && (
                         <a 
-                          href={`/api/postulants/${alumnoData.postulant.id}/qr-png`}
+                          href={`/api/postulants/${alumnoData.postulant.id}/credential`}
                           target="_blank"
                           rel="noreferrer"
                           className="mt-3 inline-block px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-colors border border-indigo-500 shadow-md"
                         >
-                          📥 Descargar QR (PNG)
+                          {window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? "📥 Descargar QR (PNG)" : "📥 Descargar Credencial"}
                         </a>
                       )}
                     </div>
