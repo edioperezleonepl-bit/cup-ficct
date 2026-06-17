@@ -651,16 +651,37 @@ class PostulantController extends Controller
             if ($qrImageData !== false) {
                 $qrBase64 = 'data:image/png;base64,' . base64_encode($qrImageData);
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // Si falla la descarga del QR, se generará el PDF sin imagen QR
         }
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.credential', [
-            'postulant' => $postulant,
-            'qrBase64'  => $qrBase64,
-        ]);
+        try {
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.credential', [
+                'postulant' => $postulant,
+                'qrBase64'  => $qrBase64,
+            ]);
 
-        return $pdf->download("credencial_postulante_{$postulant->ci}.pdf");
+            return $pdf->download("credencial_postulante_{$postulant->ci}.pdf");
+        } catch (\Throwable $e) {
+            // Registrar el error en el log del sistema
+            \Illuminate\Support\Facades\Log::error("Error al generar PDF de credencial (CI: {$postulant->ci}): " . $e->getMessage() . "\n" . $e->getTraceAsString());
+            SystemLog::log('CREDENCIAL_PDF_FALLO', "Falló la generación del PDF para la credencial del postulante CI: {$postulant->ci}. Detalle: " . $e->getMessage());
+
+            // Redirigir al QR directamente como plan de contingencia (evitando el error 500)
+            try {
+                $qrImageData = file_get_contents($qrApiUrl);
+                if ($qrImageData !== false) {
+                    return response($qrImageData, 200, [
+                        'Content-Type' => 'image/png',
+                        'Content-Disposition' => 'attachment; filename="qr_postulante_' . $postulant->ci . '.png"',
+                    ]);
+                }
+            } catch (\Throwable $ex) {
+                // Si falla la descarga del QR, redirigir al QR directamente
+            }
+
+            return redirect($qrApiUrl);
+        }
     }
 
     /**
